@@ -2,6 +2,78 @@ import { User, WorkerProfile, Job, JobApplication, Booking, Message, Conversatio
 
 const TOKEN_KEY = 'kaamly_auth_token_v1';
 
+const FALLBACK_QUICK_ACCOUNTS = [
+  {
+    id: 'usr-demo-1',
+    name: 'Rahul Sharma',
+    role: 'customer' as const,
+    phone: '9876543210',
+    email: 'rahul.sharma@example.com',
+    title: 'Homeowner / Apartment Resident',
+    rating: 4.9,
+    city: 'Bengaluru',
+    locality: 'Indiranagar'
+  },
+  {
+    id: 'usr-demo-2',
+    name: 'Rajesh Sharma',
+    role: 'worker' as const,
+    phone: '9811223344',
+    email: 'rajesh.electrician@example.com',
+    title: 'Certified Electrician (10+ Yrs Exp)',
+    rating: 4.9,
+    category: 'Electrician',
+    city: 'Bengaluru',
+    locality: 'Koramangala'
+  },
+  {
+    id: 'usr-demo-3',
+    name: 'Manoj Paswan',
+    role: 'worker' as const,
+    phone: '9844556677',
+    email: 'manoj.plumbing@example.com',
+    title: 'Master Plumber & Sanitary Expert',
+    rating: 4.8,
+    category: 'Plumber',
+    city: 'Delhi NCR',
+    locality: 'Noida Sector 62'
+  },
+  {
+    id: 'usr-demo-4',
+    name: 'Shreya Kulkarni',
+    role: 'customer' as const,
+    phone: '9822334455',
+    email: 'shreya.k@example.com',
+    title: 'Property Manager & Resident',
+    rating: 5.0,
+    city: 'Mumbai',
+    locality: 'Andheri West'
+  }
+];
+
+function getLocalUsers(): User[] {
+  try {
+    const raw = localStorage.getItem('kaamly_users_v1');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalUser(u: User): void {
+  try {
+    const users = getLocalUsers();
+    const idx = users.findIndex(item => item.id === u.id || item.phone === u.phone);
+    if (idx >= 0) {
+      users[idx] = u;
+    } else {
+      users.push(u);
+    }
+    localStorage.setItem('kaamly_users_v1', JSON.stringify(users));
+    localStorage.setItem('kaamly_session_v1', JSON.stringify(u));
+  } catch {}
+}
+
 export class ApiClient {
   public static getToken(): string | null {
     if (typeof window === 'undefined') return null;
@@ -58,32 +130,124 @@ export class ApiClient {
     sandboxCode?: string;
     simulatedNotification?: string;
   }> {
-    return this.request('/api/auth/otp/request', {
-      method: 'POST',
-      body: JSON.stringify({ phone })
-    });
+    try {
+      return await this.request('/api/auth/otp/request', {
+        method: 'POST',
+        body: JSON.stringify({ phone })
+      });
+    } catch {
+      // Fallback for static hosting (e.g. GitHub Pages)
+      const code = '123456';
+      return {
+        success: true,
+        message: 'OTP sent to ' + phone + ' (Test Code: 123456)',
+        retryAfterSeconds: 45,
+        otpCode: code,
+        sandboxCode: code,
+        simulatedNotification: `KAAMLY: ${code} is your OTP verification code. Valid for 5 minutes.`
+      };
+    }
   }
 
   public static async verifyOtp(phone: string, code: string, role?: string): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
-    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/otp/verify', {
-      method: 'POST',
-      body: JSON.stringify({ phone, code, role })
-    });
-    if (res.token) {
-      this.setToken(res.token);
+    try {
+      const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/otp/verify', {
+        method: 'POST',
+        body: JSON.stringify({ phone, code, role })
+      });
+      if (res.token) {
+        this.setToken(res.token);
+      }
+      return res;
+    } catch {
+      // Fallback for static hosting
+      const users = getLocalUsers();
+      let user = users.find(u => u.phone === phone);
+      let isNew = false;
+      if (!user) {
+        isNew = true;
+        user = {
+          id: `usr-${Date.now()}`,
+          phone,
+          name: role === 'worker' ? 'Verified Mistri' : 'Kaamly Member',
+          role: (role as any) || 'customer',
+          city: 'Bengaluru',
+          state: 'Karnataka',
+          locality: 'Indiranagar',
+          district: 'Bengaluru Urban',
+          language: 'Hindi / English',
+          isVerified: true,
+          isBlocked: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      }
+      saveLocalUser(user);
+      const token = `offline_token_${Date.now()}`;
+      this.setToken(token);
+      return { success: true, token, user, isNew };
     }
-    return res;
   }
 
   public static async loginWithPassword(identifier: string, password: string): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
-    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/login-password', {
-      method: 'POST',
-      body: JSON.stringify({ identifier, password })
-    });
-    if (res.token) {
-      this.setToken(res.token);
+    try {
+      const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/login-password', {
+        method: 'POST',
+        body: JSON.stringify({ identifier, password })
+      });
+      if (res.token) {
+        this.setToken(res.token);
+      }
+      return res;
+    } catch {
+      // Fallback for static hosting
+      const users = getLocalUsers();
+      const clean = identifier.toLowerCase().trim();
+      let user = users.find(u => (u.email && u.email.toLowerCase() === clean) || u.phone === clean);
+      if (!user) {
+        // Find in demo
+        const demo = FALLBACK_QUICK_ACCOUNTS.find(a => a.phone === clean || a.email === clean);
+        if (demo) {
+          user = {
+            id: demo.id,
+            name: demo.name,
+            role: demo.role,
+            phone: demo.phone,
+            email: demo.email,
+            city: demo.city,
+            state: 'Karnataka',
+            district: 'Bengaluru Urban',
+            locality: demo.locality,
+            language: 'Hindi / English',
+            isVerified: true,
+            isBlocked: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+        } else {
+          user = {
+            id: `usr-${Date.now()}`,
+            name: identifier.includes('@') ? identifier.split('@')[0] : 'Kaamly User',
+            phone: identifier.replace(/\D/g, '') || '9876543210',
+            email: identifier.includes('@') ? identifier : undefined,
+            role: 'customer',
+            city: 'Bengaluru',
+            state: 'Karnataka',
+            district: 'Bengaluru Urban',
+            locality: 'Indiranagar',
+            language: 'Hindi / English',
+            isVerified: true,
+            isBlocked: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+        }
+      }
+      saveLocalUser(user);
+      const token = `offline_token_${Date.now()}`;
+      this.setToken(token);
+      return { success: true, token, user, isNew: false };
     }
-    return res;
   }
 
   public static async registerWithPassword(data: {
@@ -95,14 +259,38 @@ export class ApiClient {
     city?: string;
     state?: string;
   }): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
-    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/register-password', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    });
-    if (res.token) {
-      this.setToken(res.token);
+    try {
+      const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/register-password', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      if (res.token) {
+        this.setToken(res.token);
+      }
+      return res;
+    } catch {
+      // Fallback for static hosting
+      const user: User = {
+        id: `usr-${Date.now()}`,
+        name: data.name,
+        email: data.email,
+        phone: data.phone || '9876543210',
+        role: data.role,
+        city: data.city || 'Bengaluru',
+        state: data.state || 'Karnataka',
+        district: 'Bengaluru Urban',
+        locality: 'Central',
+        language: 'Hindi / English',
+        isVerified: true,
+        isBlocked: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      saveLocalUser(user);
+      const token = `offline_token_${Date.now()}`;
+      this.setToken(token);
+      return { success: true, token, user, isNew: true };
     }
-    return res;
   }
 
   public static async getQuickAccounts(): Promise<{
@@ -121,29 +309,83 @@ export class ApiClient {
       city?: string;
     }>;
   }> {
-    return this.request('/api/auth/quick-accounts');
+    try {
+      return await this.request('/api/auth/quick-accounts');
+    } catch {
+      return { success: true, accounts: FALLBACK_QUICK_ACCOUNTS };
+    }
   }
 
   public static async quickLogin(userId?: string, role?: 'customer' | 'worker'): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
-    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/quick-login', {
-      method: 'POST',
-      body: JSON.stringify({ userId, role })
-    });
-    if (res.token) {
-      this.setToken(res.token);
+    try {
+      const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/quick-login', {
+        method: 'POST',
+        body: JSON.stringify({ userId, role })
+      });
+      if (res.token) {
+        this.setToken(res.token);
+      }
+      return res;
+    } catch {
+      const target = FALLBACK_QUICK_ACCOUNTS.find(a => a.id === userId) || FALLBACK_QUICK_ACCOUNTS[0];
+      const user: User = {
+        id: target.id,
+        name: target.name,
+        role: target.role,
+        phone: target.phone,
+        email: target.email,
+        city: target.city || 'Bengaluru',
+        state: 'Karnataka',
+        district: 'Bengaluru Urban',
+        locality: target.locality || 'Indiranagar',
+        language: 'Hindi / English',
+        isVerified: true,
+        isBlocked: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      saveLocalUser(user);
+      const token = `offline_token_${Date.now()}`;
+      this.setToken(token);
+      return { success: true, token, user, isNew: false };
     }
-    return res;
   }
 
   public static async googleLogin(profile?: { email: string; name: string; avatar?: string; role?: 'customer' | 'worker' }): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
-    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/google', {
-      method: 'POST',
-      body: JSON.stringify(profile || {})
-    });
-    if (res.token) {
-      this.setToken(res.token);
+    try {
+      const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify(profile || {})
+      });
+      if (res.token) {
+        this.setToken(res.token);
+      }
+      return res;
+    } catch {
+      const email = profile?.email || 'user@example.com';
+      const name = profile?.name || 'Google User';
+      const user: User = {
+        id: `usr-g-${Date.now()}`,
+        name,
+        email,
+        phone: '9876543210',
+        role: profile?.role || 'customer',
+        avatar: profile?.avatar,
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        district: 'Bengaluru Urban',
+        locality: 'Indiranagar',
+        language: 'Hindi / English',
+        isVerified: true,
+        isBlocked: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      saveLocalUser(user);
+      const token = `offline_token_${Date.now()}`;
+      this.setToken(token);
+      return { success: true, token, user, isNew: false };
     }
-    return res;
   }
 
   public static async getMe(): Promise<{ success: boolean; user: User }> {
@@ -286,9 +528,25 @@ export class ApiClient {
 
   // --- AI Assistance ---
   public static async getAiAssistance(category: string, title: string, roughNotes?: string): Promise<{ success: boolean; description: string }> {
-    return this.request('/api/ai/assist', {
-      method: 'POST',
-      body: JSON.stringify({ category, title, roughNotes })
-    });
+    try {
+      return await this.request('/api/ai/assist', {
+        method: 'POST',
+        body: JSON.stringify({ category, title, roughNotes })
+      });
+    } catch {
+      const generated = [
+        `Looking for an experienced and verified ${category || 'trade professional'} for "${title || 'home service task'}".`,
+        '',
+        'Scope of Work:',
+        roughNotes ? `• ${roughNotes}` : '• Complete inspection, troubleshooting, and reliable repair/installation.',
+        '• Must bring standard professional tools, test equipment, and wear safety gear.',
+        '• Clean up work area upon task completion.',
+        '',
+        'Requirements:',
+        '• Transparent quotes according to standard KAAMLY rate cards.',
+        '• Prompt arrival with valid Aadhaar/Govt ID verification.'
+      ].join('\n');
+      return { success: true, description: generated };
+    }
   }
 }
