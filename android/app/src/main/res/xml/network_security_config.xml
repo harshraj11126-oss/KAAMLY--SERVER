@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Hardened Production Network Security Config -->
+    <!-- Disallows cleartext (HTTP) traffic across the entire app -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Only trust verified system CA certificates in release builds -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">kaamly.in</domain>
+        <domain includeSubdomains="true">openstreetmap.org</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <pin-set expiration="2027-12-31">
+            <!-- Backup pins / standard HTTPS enforcement -->
+        </pin-set>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,40 @@
+{
+  "packageId": "com.kaamly.app",
+  "host": "kaamly.in",
+  "name": "KAAMLY - Verified Home Services & Repairs",
+  "launcherName": "KAAMLY",
+  "themeColor": "#0f172a",
+  "navigationColor": "#0f172a",
+  "backgroundColor": "#0f172a",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://kaamly.in/pwa-512x512.png",
+  "maskableIconUrl": "https://kaamly.in/pwa-maskable-512x512.png",
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Book Electrician",
+      "short_name": "Electrician",
+      "url": "/#services",
+      "icon": "https://kaamly.in/pwa-192x192.png"
+    },
+    {
+      "name": "Book Plumber",
+      "short_name": "Plumber",
+      "url": "/#services",
+      "icon": "https://kaamly.in/pwa-192x192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://kaamly.in/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "playBilling": {
+      "enabled": false
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  }
+}

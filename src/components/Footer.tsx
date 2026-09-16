@@ -1,17 +1,19 @@
 import React from 'react';
-import { ShieldCheck, PhoneCall, Mail, MapPin } from 'lucide-react';
+import { ShieldCheck, PhoneCall, Mail, MapPin, Smartphone } from 'lucide-react';
 import { CITIES } from './Header';
 
 interface FooterProps {
   onServiceClick: (serviceName: string) => void;
   onNavigate: (sectionId: string) => void;
   onSelectCity?: (city: string) => void;
+  onOpenStorePublish?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ 
   onServiceClick, 
   onNavigate,
-  onSelectCity 
+  onSelectCity,
+  onOpenStorePublish 
 }) => {
   const currentYear = new Date().getFullYear();
 
@@ -188,7 +190,16 @@ export const Footer: React.FC<FooterProps> = ({
           <p id="year">
             © {currentYear} KAAMLY Technologies Pvt. Ltd. All rights reserved.
           </p>
-          <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex flex-wrap items-center gap-4 text-[11px]">
+            {onOpenStorePublish && (
+              <button
+                onClick={onOpenStorePublish}
+                className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Play Store & App Store Deployment Hub</span>
+              </button>
+            )}
             <span>Privacy Policy</span>
             <span>•</span>
             <span>Terms of Service</span>

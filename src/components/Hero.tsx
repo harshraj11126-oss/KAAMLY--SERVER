@@ -8,7 +8,8 @@ import {
   MapPin, 
   Wrench, 
   CheckCircle2,
-  CalendarCheck
+  CalendarCheck,
+  Smartphone
 } from 'lucide-react';
 
 interface HeroProps {
@@ -16,13 +17,15 @@ interface HeroProps {
   onHowItWorksClick: () => void;
   selectedCity?: string;
   onQuickBook?: (service: string) => void;
+  onOpenStorePublish?: () => void;
 }
 
 export const Hero: React.FC<HeroProps> = ({ 
   onExploreClick, 
   onHowItWorksClick,
   selectedCity = 'Bengaluru',
-  onQuickBook
+  onQuickBook,
+  onOpenStorePublish,
 }) => {
   return (
     <section
@@ -83,6 +86,17 @@ export const Hero: React.FC<HeroProps> = ({
               >
                 Standard Safety Process
               </button>
+
+              {onOpenStorePublish && (
+                <button
+                  onClick={onOpenStorePublish}
+                  id="hero-store-publish-btn"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl font-bold text-emerald-400 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-600/40 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer text-sm"
+                >
+                  <Smartphone className="w-4 h-4 text-emerald-400" />
+                  <span>Play Store & App Store Ready</span>
+                </button>
+              )}
             </div>
 
             {/* Trust Metrics Bar */}

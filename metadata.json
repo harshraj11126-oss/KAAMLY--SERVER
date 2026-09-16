@@ -1,7 +1,9 @@
 {
   "name": "KAAMLY - Local Work, Trusted People",
   "description": "Find trusted electricians, plumbers, AC repair professionals, cleaners and more local experts near you.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "geolocation"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

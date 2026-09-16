@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.kaamly.app",
+      "sha256_cert_fingerprints": [
+        "14:6D:E9:7D:0F:52:AB:E0:21:FD:A2:EB:68:55:FF:4C:E6:E5:8E:7C:CE:D7:BC:A0:87:72:DE:0D:37:C7:E3:4C"
+      ]
+    }
+  }
+]

@@ -1,495 +1,529 @@
-import React, { useState } from 'react';
-import { 
-  X, 
-  Mail, 
-  Lock, 
-  User as UserIcon, 
-  Phone, 
-  MapPin, 
-  Eye, 
-  EyeOff, 
-  CheckCircle2, 
-  ArrowRight,
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  Phone,
   ShieldCheck,
-  Sparkles
+  ArrowRight,
+  Sparkles,
+  Briefcase,
+  User as UserIcon,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  MapPin,
+  Lock
 } from 'lucide-react';
-import { User } from '../types';
+import { User, UserRole } from '../types';
+import { KaamlyStore } from '../db/kaamlyStore';
+import { ApiClient } from '../services/apiClient';
+import { INDIA_STATES_DATA, getDistrictsByState, getCitiesByDistrict } from '../data/indiaLocations';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialMode?: 'login' | 'register';
+  initialRole?: UserRole;
   onAuthSuccess: (user: User) => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
-  initialMode = 'login',
-  onAuthSuccess,
+  initialRole = 'customer',
+  onAuthSuccess
 }) => {
-  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
-  const [showPassword, setShowPassword] = useState(false);
+  // Step flow: 'phone' -> 'otp' -> 'profile_setup'
+  const [step, setStep] = useState<'phone' | 'otp' | 'profile_setup'>('phone');
+  const [role, setRole] = useState<UserRole>(initialRole);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otpInput, setOtpInput] = useState('');
+  const [timer, setTimer] = useState(45);
+  const [canResend, setCanResend] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [sandboxCode, setSandboxCode] = useState<string | null>(null);
 
-  // Form Fields
+  // Profile setup fields
   const [name, setName] = useState('');
-  const [emailOrPhone, setEmailOrPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [location, setLocation] = useState('Bengaluru, Karnataka');
-  const [role, setRole] = useState<'homeowner' | 'technician'>('homeowner');
+  const [state, setState] = useState('Karnataka');
+  const [district, setDistrict] = useState('Bengaluru Urban');
+  const [city, setCity] = useState('Bengaluru');
+  const [locality, setLocality] = useState('Indiranagar');
+  const [language, setLanguage] = useState('Hindi / English');
+
+  // Pending user object once authenticated
+  const [pendingUser, setPendingUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (step === 'otp' && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (timer === 0) {
+      setCanResend(true);
+    }
+    return () => clearInterval(interval);
+  }, [step, timer]);
 
   if (!isOpen) return null;
 
-  const resetForm = () => {
-    setName('');
-    setEmailOrPhone('');
-    setPassword('');
-    setPhone('');
-    setError(null);
-    setSuccessMessage(null);
-  };
-
-  const handleSwitchMode = (newMode: 'login' | 'register') => {
-    setMode(newMode);
-    setError(null);
-    setSuccessMessage(null);
-  };
-
-  const handleQuickDemo = (demoType: 'homeowner' | 'technician') => {
-    if (demoType === 'homeowner') {
-      const demoUser: User = {
-        id: 'user-demo-1',
-        name: 'Harsh Raaj',
-        email: 'harshraj11126@gmail.com',
-        phone: '+91 98765 43210',
-        location: 'Indiranagar, Bengaluru',
-        role: 'homeowner',
-        avatar: '👨‍💼',
-        joinedDate: 'September 2026',
-      };
-      setSuccessMessage('Logged in as demo homeowner!');
-      setTimeout(() => {
-        onAuthSuccess(demoUser);
-        onClose();
-        resetForm();
-      }, 500);
-    } else {
-      const demoTech: User = {
-        id: 'user-demo-2',
-        name: 'Rajesh Sharma',
-        email: 'rajesh.electrician@kaamly.in',
-        phone: '+91 98112 34567',
-        location: 'Sector 62, Noida, Delhi NCR',
-        role: 'technician',
-        avatar: '👨‍🔧',
-        joinedDate: 'August 2026',
-      };
-      setSuccessMessage('Logged in as verified technician!');
-      setTimeout(() => {
-        onAuthSuccess(demoTech);
-        onClose();
-        resetForm();
-      }, 500);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (mode === 'login') {
-      if (!emailOrPhone.trim()) {
-        setError('Please enter your email address or mobile number.');
-        return;
+    const clean = phoneNumber.replace(/\D/g, '');
+    if (clean.length !== 10) {
+      setError('Please enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await ApiClient.requestOtp(clean);
+      if (res.sandboxCode) {
+        setSandboxCode(res.sandboxCode);
+      } else {
+        setSandboxCode(null);
       }
-      if (!password || password.length < 4) {
-        setError('Please enter your password (minimum 4 characters).');
-        return;
-      }
+      setOtpInput('');
+      setStep('otp');
+      setTimer(res.retryAfterSeconds || 45);
+      setCanResend(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to request OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // Check existing accounts in localStorage or create session
-      let existingUsers: User[] = [];
-      try {
-        const stored = localStorage.getItem('kaamly_users');
-        if (stored) existingUsers = JSON.parse(stored);
-      } catch {
-        // Fallback
-      }
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
 
-      const foundUser = existingUsers.find(
-        (u) =>
-          u.email.toLowerCase() === emailOrPhone.trim().toLowerCase() ||
-          u.phone.replace(/\s+/g, '') === emailOrPhone.trim().replace(/\s+/g, '')
-      );
+    if (otpInput.trim().length !== 6) {
+      setError('Please enter the full 6-digit verification code.');
+      return;
+    }
 
-      const authenticatedUser: User = foundUser || {
-        id: `user-${Date.now().toString().slice(-6)}`,
-        name: emailOrPhone.includes('@')
-          ? emailOrPhone.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-          : 'Kaamly Member',
-        email: emailOrPhone.includes('@') ? emailOrPhone.trim() : `${emailOrPhone.trim()}@user.kaamly.in`,
-        phone: emailOrPhone.startsWith('+') || /^\d+$/.test(emailOrPhone) ? emailOrPhone.trim() : '+91 98765 43210',
-        location: 'Bengaluru, India',
-        role: 'homeowner',
-        avatar: '👤',
-        joinedDate: 'Just now',
-      };
+    setLoading(true);
+    try {
+      const fullPhone = `+91 ${phoneNumber.replace(/\D/g, '')}`;
+      const res = await ApiClient.verifyOtp(fullPhone, otpInput.trim(), role);
+      const user = res.user;
 
-      setSuccessMessage(`Welcome back, ${authenticatedUser.name}!`);
-      setTimeout(() => {
-        onAuthSuccess(authenticatedUser);
+      // Keep client store in sync
+      KaamlyStore.setCurrentUser(user);
+      KaamlyStore.saveUser(user);
+
+      if (res.isNew || !user.name || user.name === 'Kaamly Member' || user.name === 'New Kaamly Worker') {
+        setPendingUser(user);
+        setName(user.name.startsWith('New') || user.name.startsWith('Kaamly') ? '' : user.name);
+        setState(user.state || 'Karnataka');
+        setDistrict(user.district || 'Bengaluru Urban');
+        setCity(user.city || 'Bengaluru');
+        setLocality(user.locality || '');
+        setStep('profile_setup');
+      } else {
+        onAuthSuccess(user);
         onClose();
-        resetForm();
-      }, 500);
-    } else {
-      // Register validation
-      if (!name.trim()) {
-        setError('Please enter your full name.');
-        return;
       }
-      if (!emailOrPhone.trim() || !emailOrPhone.includes('@')) {
-        setError('Please enter a valid email address.');
-        return;
-      }
-      if (!phone.trim()) {
-        setError('Please enter your 10-digit mobile number.');
-        return;
-      }
-      if (!password || password.length < 6) {
-        setError('Password must be at least 6 characters long.');
-        return;
-      }
+    } catch (err: any) {
+      setError(err.message || 'Verification failed. Please check the code.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      const newUser: User = {
-        id: `user-${Date.now().toString().slice(-6)}`,
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError('Please enter your full name.');
+      return;
+    }
+
+    if (!pendingUser) return;
+
+    setLoading(true);
+    try {
+      const profileUpdates: Partial<User> = {
         name: name.trim(),
-        email: emailOrPhone.trim().toLowerCase(),
-        phone: phone.trim().startsWith('+91') ? phone.trim() : `+91 ${phone.trim()}`,
-        location: location.trim(),
-        role: role,
-        avatar: role === 'technician' ? '👨‍🔧' : '👤',
-        joinedDate: 'Joined today',
+        role,
+        state,
+        district,
+        city,
+        locality: locality.trim() || city,
+        language
       };
 
-      // Store in users registry
-      try {
-        const stored = localStorage.getItem('kaamly_users');
-        const usersList: User[] = stored ? JSON.parse(stored) : [];
-        usersList.push(newUser);
-        localStorage.setItem('kaamly_users', JSON.stringify(usersList));
-      } catch {
-        // Fallback
+      const res = await ApiClient.updateProfile(profileUpdates);
+      const updatedUser = res.user;
+
+      // If worker, ensure worker profile
+      if (role === 'worker') {
+        await ApiClient.updateWorkerProfile({
+          name: updatedUser.name,
+          category: 'Electrician',
+          skills: ['House Wiring', 'Appliance Repair'],
+          experienceYears: 3,
+          hourlyRate: 250,
+          dailyRate: 800,
+          availability: 'available',
+          contactPreference: 'both',
+          state: updatedUser.state,
+          district: updatedUser.district,
+          city: updatedUser.city,
+          locality: updatedUser.locality,
+          languages: [language],
+          shortDescription: `Skilled professional service provider in ${updatedUser.city}.`
+        });
       }
 
-      setSuccessMessage(`Account created successfully! Welcome to KAAMLY, ${newUser.name}.`);
-      setTimeout(() => {
-        onAuthSuccess(newUser);
-        onClose();
-        resetForm();
-      }, 600);
+      KaamlyStore.saveUser(updatedUser);
+      KaamlyStore.setCurrentUser(updatedUser);
+      onAuthSuccess(updatedUser);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update profile.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStateChange = (stateName: string) => {
+    setState(stateName);
+    const stateDistricts = getDistrictsByState(stateName);
+    if (stateDistricts.length > 0) {
+      setDistrict(stateDistricts[0].name);
+      setCity(stateDistricts[0].cities[0] || stateName);
+    }
+  };
+
+  const handleDistrictChange = (distName: string) => {
+    setDistrict(distName);
+    const distCities = getCitiesByDistrict(state, distName);
+    if (distCities.length > 0) {
+      setCity(distCities[0]);
     }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
-        {/* Header Bar */}
-        <div className="p-5 sm:p-6 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white font-extrabold flex items-center justify-center text-lg shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-lg">
               K
             </div>
             <div>
-              <h3 className="font-extrabold text-slate-900 text-lg leading-tight">
-                {mode === 'login' ? 'Welcome to KAAMLY' : 'Create Your Account'}
+              <h3 className="font-bold text-white text-base">
+                {step === 'phone' ? 'Sign In / Register' : step === 'otp' ? 'Enter Verification Code' : 'Complete Your Profile'}
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
-                {mode === 'login'
-                  ? 'Sign in to manage bookings and track requests'
-                  : 'Join local homeowners and trusted service professionals'}
-              </p>
+              <p className="text-xs text-slate-400">KAAMLY • Local Work, Trusted People</p>
             </div>
           </div>
-
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200/60 transition-colors cursor-pointer"
-            aria-label="Close modal"
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="px-6 pt-5">
-          <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl">
-            <button
-              type="button"
-              onClick={() => handleSwitchMode('login')}
-              className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
-                mode === 'login'
-                  ? 'bg-white text-blue-600 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSwitchMode('register')}
-              className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
-                mode === 'register'
-                  ? 'bg-white text-blue-600 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Register
-            </button>
-          </div>
-        </div>
-
-        {/* Form Body */}
-        <div className="p-6">
+        {/* Content */}
+        <div className="p-5 overflow-y-auto">
           {error && (
-            <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+            <div className="mb-4 p-3 bg-red-950/60 border border-red-800/60 rounded-xl flex items-center gap-2.5 text-xs text-red-300">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
               <span>{error}</span>
             </div>
           )}
 
-          {successMessage && (
-            <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-3.5">
-            {mode === 'register' && (
-              <>
-                {/* Account Type Selection */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                    I want to join as:
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setRole('homeowner')}
-                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex items-center gap-2 cursor-pointer ${
-                        role === 'homeowner'
-                          ? 'border-blue-600 bg-blue-50/60 text-blue-700 ring-1 ring-blue-600'
-                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>🏠</span>
-                      <div>
-                        <div className="leading-tight">Homeowner</div>
-                        <div className="text-[10px] text-slate-400 font-normal">Book services</div>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setRole('technician')}
-                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex items-center gap-2 cursor-pointer ${
-                        role === 'technician'
-                          ? 'border-blue-600 bg-blue-50/60 text-blue-700 ring-1 ring-blue-600'
-                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>🔧</span>
-                      <div>
-                        <div className="leading-tight">Technician</div>
-                        <div className="text-[10px] text-slate-400 font-normal">Provide work</div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Name */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    Full Name <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Harsh Raaj"
-                      required
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    />
-                    <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Email or Phone */}
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                {mode === 'login' ? 'Email or Mobile Number' : 'Email Address'} <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={mode === 'login' ? 'text' : 'email'}
-                  value={emailOrPhone}
-                  onChange={(e) => setEmailOrPhone(e.target.value)}
-                  placeholder={
-                    mode === 'login' ? 'name@example.com or 9876543210' : 'name@example.com'
-                  }
-                  required
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                />
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              </div>
-            </div>
-
-            {mode === 'register' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Phone */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    Mobile Number <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+91 98765 43210"
-                      required
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    />
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
-
-                {/* City */}
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    City / State
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all truncate"
-                    >
-                      <option value="Bengaluru, Karnataka">Bengaluru</option>
-                      <option value="Delhi NCR, New Delhi">Delhi NCR</option>
-                      <option value="Mumbai, Maharashtra">Mumbai</option>
-                      <option value="Pune, Maharashtra">Pune</option>
-                      <option value="Hyderabad, Telangana">Hyderabad</option>
-                      <option value="Kolkata, West Bengal">Kolkata</option>
-                      <option value="Ahmedabad, Gujarat">Ahmedabad</option>
-                      <option value="Jaipur, Rajasthan">Jaipur</option>
-                    </select>
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3.5" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Password */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                  Password <span className="text-rose-500">*</span>
+          {step === 'phone' && (
+            <form onSubmit={handleSendOtp} className="space-y-4">
+              {/* Role Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-2">
+                  I want to use KAAMLY as:
                 </label>
-                {mode === 'login' && (
+                <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => alert('Password reset link sent to your registered email/phone.')}
-                    className="text-[11px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                    onClick={() => setRole('customer')}
+                    className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                      role === 'customer'
+                        ? 'border-amber-500 bg-amber-500/10 text-white shadow-sm'
+                        : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'
+                    }`}
                   >
-                    Forgot Password?
+                    <div className="flex items-center justify-between">
+                      <UserIcon className={`w-4 h-4 ${role === 'customer' ? 'text-amber-400' : 'text-slate-400'}`} />
+                      {role === 'customer' && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />}
+                    </div>
+                    <span className="font-bold text-sm text-white">Customer</span>
+                    <span className="text-[11px] text-slate-400">Hire workers & post work</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRole('worker')}
+                    className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                      role === 'worker'
+                        ? 'border-amber-500 bg-amber-500/10 text-white shadow-sm'
+                        : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <Briefcase className={`w-4 h-4 ${role === 'worker' ? 'text-amber-400' : 'text-slate-400'}`} />
+                      {role === 'worker' && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />}
+                    </div>
+                    <span className="font-bold text-sm text-white">Worker / Mistri</span>
+                    <span className="text-[11px] text-slate-400">Find jobs & earn daily</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Phone Input */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Mobile Number (India)
+                </label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3.5 text-sm font-semibold text-slate-400 flex items-center gap-1.5 border-r border-slate-700 pr-2.5">
+                    🇮🇳 +91
+                  </span>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="98765 43210"
+                    maxLength={10}
+                    autoFocus
+                    required
+                    className="w-full pl-22 pr-4 py-3 bg-slate-800 border border-slate-700 text-white rounded-xl text-base tracking-wider focus:outline-none focus:border-amber-400 placeholder-slate-500 font-medium"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  We will send a 6-digit OTP verification code via SMS.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold text-sm shadow-md hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+              >
+                <span>Continue</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          )}
+
+          {step === 'otp' && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div className="p-3 bg-slate-800/80 border border-slate-700/80 rounded-xl text-xs text-slate-300">
+                <div className="font-semibold text-white flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-400" />
+                  <span>Secure SMS Verification</span>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  A single-use 6-digit code has been dispatched to <strong className="text-white">+91 {phoneNumber}</strong>. Valid for 5 minutes.
+                </p>
+                {sandboxCode && (
+                  <div className="mt-2.5 pt-2 border-t border-slate-700/60 flex items-center justify-between text-[11px]">
+                    <span className="text-amber-400/90 font-medium">🧪 Sandbox Code (Dev Testing):</span>
+                    <button
+                      type="button"
+                      onClick={() => setOtpInput(sandboxCode)}
+                      className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-mono font-bold rounded cursor-pointer transition-colors"
+                    >
+                      {sandboxCode} (Auto-Fill)
+                    </button>
+                  </div>
                 )}
               </div>
-              <div className="relative">
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 text-center">
+                  Enter 6-Digit OTP Code
+                </label>
                 <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  type="text"
+                  value={otpInput}
+                  onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="• • • • • •"
+                  maxLength={6}
+                  autoFocus
                   required
-                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  className="w-full text-center py-3 bg-slate-800 border border-slate-700 text-white rounded-xl text-2xl tracking-[0.4em] font-mono focus:outline-none focus:border-amber-400 placeholder-slate-600"
                 />
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  tabIndex={-1}
+                  onClick={() => setStep('phone')}
+                  className="text-slate-400 hover:text-white"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  Change Number
                 </button>
+
+                {canResend ? (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={async () => {
+                      setLoading(true);
+                      setError(null);
+                      try {
+                        const clean = phoneNumber.replace(/\D/g, '');
+                        const res = await ApiClient.requestOtp(clean);
+                        if (res.sandboxCode) setSandboxCode(res.sandboxCode);
+                        setTimer(res.retryAfterSeconds || 45);
+                        setCanResend(false);
+                      } catch (err: any) {
+                        setError(err.message || 'Failed to resend OTP.');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Resend OTP
+                  </button>
+                ) : (
+                  <span className="text-slate-500 font-mono">Resend in {timer}s</span>
+                )}
               </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>{mode === 'login' ? 'Sign In' : 'Create Account'}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-
-          {/* Quick Demo Accounts */}
-          <div className="mt-5 pt-5 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-2.5">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                One-Click Quick Login
-              </span>
-              <span className="text-[10px] text-slate-400 font-medium">Instant test</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('homeowner')}
-                className="p-2 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 text-left transition-all cursor-pointer group"
-              >
-                <div className="text-xs font-bold text-slate-800 group-hover:text-blue-600 flex items-center gap-1">
-                  <span>👨‍💼</span>
-                  <span>Harsh Raaj</span>
-                </div>
-                <div className="text-[10px] text-slate-400">Homeowner (BLR)</div>
-              </button>
 
               <button
-                type="button"
-                onClick={() => handleQuickDemo('technician')}
-                className="p-2 rounded-xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 text-left transition-all cursor-pointer group"
+                type="submit"
+                disabled={loading || otpInput.length !== 6}
+                className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 rounded-xl font-bold text-sm shadow-md hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <div className="text-xs font-bold text-slate-800 group-hover:text-blue-600 flex items-center gap-1">
-                  <span>👨‍🔧</span>
-                  <span>Rajesh Sharma</span>
-                </div>
-                <div className="text-[10px] text-slate-400">Technician (Pro)</div>
+                <ShieldCheck className="w-4 h-4" />
+                <span>{loading ? 'Verifying...' : 'Verify & Login'}</span>
               </button>
-            </div>
-          </div>
+            </form>
+          )}
 
-          {/* Trust Guarantee */}
-          <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Secure 256-bit encryption • No spam guarantee</span>
-          </div>
+          {step === 'profile_setup' && (
+            <form onSubmit={handleSaveProfile} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Full Name / Business Name *
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Ramesh Kumar"
+                  required
+                  autoFocus
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400 placeholder-slate-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    State
+                  </label>
+                  <select
+                    value={state}
+                    onChange={(e) => handleStateChange(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-amber-400"
+                  >
+                    {INDIA_STATES_DATA.map((s) => (
+                      <option key={s.code} value={s.name}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    District
+                  </label>
+                  <select
+                    value={district}
+                    onChange={(e) => handleDistrictChange(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-amber-400"
+                  >
+                    {getDistrictsByState(state).map((d) => (
+                      <option key={d.name} value={d.name}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    City / Town
+                  </label>
+                  <select
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-amber-400"
+                  >
+                    {getCitiesByDistrict(state, district).map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Locality / Area
+                  </label>
+                  <input
+                    type="text"
+                    value={locality}
+                    onChange={(e) => setLocality(e.target.value)}
+                    placeholder="e.g. Sector 18"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-2.5 py-2 text-xs focus:outline-none focus:border-amber-400 placeholder-slate-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Preferred Language
+                </label>
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-400"
+                >
+                  <option value="Hindi / English">Hindi / English</option>
+                  <option value="Hindi">Hindi (हिंदी)</option>
+                  <option value="English">English</option>
+                  <option value="Kannada">Kannada (ಕನ್ನಡ)</option>
+                  <option value="Tamil">Tamil (தமிழ்)</option>
+                  <option value="Telugu">Telugu (తెలుగు)</option>
+                  <option value="Marathi">Marathi (मराठी)</option>
+                  <option value="Bengali">Bengali (বাংলা)</option>
+                  <option value="Bhojpuri">Bhojpuri (भोजपुरी)</option>
+                  <option value="Punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
+                  <option value="Gujarati">Gujarati (ગુજરાતી)</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold text-sm shadow-md hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer mt-3"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Finish & Start Using KAAMLY</span>
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

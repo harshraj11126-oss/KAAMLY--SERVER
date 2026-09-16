@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  
+  <!-- Outer subtle glowing ring -->
+  <rect x="24" y="24" width="464" height="464" rx="88" fill="none" stroke="#334155" stroke-width="4" stroke-opacity="0.6" />
+  
+  <!-- Accent Badge behind K -->
+  <circle cx="340" cy="172" r="48" fill="url(#blueGrad)" opacity="0.9" />
+  <!-- Verification Star Icon inside badge -->
+  <path d="M340 148 L347 163 L363 165 L351 176 L354 192 L340 184 L326 192 L329 176 L317 165 L333 163 Z" fill="#ffffff" />
+
+  <!-- Bold Modern 'K' Letterform -->
+  <g fill="#ffffff">
+    <!-- Vertical stem -->
+    <rect x="136" y="128" width="60" height="256" rx="16" />
+    <!-- Upper diagonal arm -->
+    <path d="M196 244 L308 140 C316 132 329 133 336 141 L352 159 C359 167 358 179 350 186 L252 272 L196 244 Z" />
+    <!-- Lower diagonal leg -->
+    <path d="M236 256 L348 368 C355 375 355 387 348 394 L330 412 C323 419 311 419 304 412 L196 304 L236 256 Z" />
+  </g>
+
+  <!-- Bottom Accent bar -->
+  <rect x="136" y="412" width="240" height="12" rx="6" fill="url(#blueGrad)" />
+</svg>
