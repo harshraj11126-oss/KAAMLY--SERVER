@@ -46,7 +46,7 @@ export const PostJobScreen: React.FC<PostJobScreenProps> = ({
   const [budget, setBudget] = useState<number>(500);
   const [budgetType, setBudgetType] = useState<'fixed' | 'daily' | 'hourly'>('fixed');
   const [preferredDate, setPreferredDate] = useState('Today / Immediate');
-  const [contactPreference, setContactPreference] = useState<'call' | 'chat' | 'both'>('both');
+  const [contactPreference, setContactPreference] = useState<'phone' | 'chat' | 'both'>('both');
 
   // Location fields
   const [state, setState] = useState(currentLocation.state || 'Karnataka');
@@ -486,9 +486,9 @@ export const PostJobScreen: React.FC<PostJobScreenProps> = ({
 
               <button
                 type="button"
-                onClick={() => setContactPreference('call')}
+                onClick={() => setContactPreference('phone')}
                 className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                  contactPreference === 'call'
+                  contactPreference === 'phone'
                     ? 'border-amber-500 bg-amber-500/20 text-white'
                     : 'border-slate-700 bg-slate-800 text-slate-400'
                 }`}

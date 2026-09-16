@@ -23,7 +23,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [serviceName, setServiceName] = useState(defaultService || 'Electrician');
   const [customerName, setCustomerName] = useState(currentUser?.name || '');
   const [customerPhone, setCustomerPhone] = useState(currentUser?.phone || '');
-  const [customerLocation, setCustomerLocation] = useState(currentUser?.location || '');
+  const [customerLocation, setCustomerLocation] = useState(
+    currentUser?.locality ? `${currentUser.locality}, ${currentUser.city}` : currentUser?.city || ''
+  );
   const [customerMessage, setCustomerMessage] = useState('');
   const [preferredTime, setPreferredTime] = useState('Today - Within 2 Hours');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,7 +42,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (currentUser) {
       if (!customerName) setCustomerName(currentUser.name);
       if (!customerPhone) setCustomerPhone(currentUser.phone);
-      if (!customerLocation) setCustomerLocation(currentUser.location);
+      if (!customerLocation) {
+        setCustomerLocation(currentUser.locality ? `${currentUser.locality}, ${currentUser.city}` : currentUser.city || '');
+      }
     }
   }, [currentUser]);
 

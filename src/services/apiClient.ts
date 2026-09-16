@@ -50,7 +50,14 @@ export class ApiClient {
   }
 
   // --- Auth ---
-  public static async requestOtp(phone: string): Promise<{ success: boolean; message: string; retryAfterSeconds?: number; sandboxCode?: string }> {
+  public static async requestOtp(phone: string): Promise<{
+    success: boolean;
+    message: string;
+    retryAfterSeconds?: number;
+    otpCode?: string;
+    sandboxCode?: string;
+    simulatedNotification?: string;
+  }> {
     return this.request('/api/auth/otp/request', {
       method: 'POST',
       body: JSON.stringify({ phone })
@@ -61,6 +68,77 @@ export class ApiClient {
     const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/otp/verify', {
       method: 'POST',
       body: JSON.stringify({ phone, code, role })
+    });
+    if (res.token) {
+      this.setToken(res.token);
+    }
+    return res;
+  }
+
+  public static async loginWithPassword(identifier: string, password: string): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
+    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/login-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, password })
+    });
+    if (res.token) {
+      this.setToken(res.token);
+    }
+    return res;
+  }
+
+  public static async registerWithPassword(data: {
+    name: string;
+    email?: string;
+    phone?: string;
+    password: string;
+    role: 'customer' | 'worker';
+    city?: string;
+    state?: string;
+  }): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
+    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/register-password', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+    if (res.token) {
+      this.setToken(res.token);
+    }
+    return res;
+  }
+
+  public static async getQuickAccounts(): Promise<{
+    success: boolean;
+    accounts: Array<{
+      id: string;
+      name: string;
+      role: 'customer' | 'worker';
+      phone: string;
+      email?: string;
+      title: string;
+      avatar?: string;
+      rating?: number;
+      category?: string;
+      locality?: string;
+      city?: string;
+    }>;
+  }> {
+    return this.request('/api/auth/quick-accounts');
+  }
+
+  public static async quickLogin(userId?: string, role?: 'customer' | 'worker'): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
+    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/quick-login', {
+      method: 'POST',
+      body: JSON.stringify({ userId, role })
+    });
+    if (res.token) {
+      this.setToken(res.token);
+    }
+    return res;
+  }
+
+  public static async googleLogin(profile?: { email: string; name: string; avatar?: string; role?: 'customer' | 'worker' }): Promise<{ success: boolean; token: string; user: User; isNew: boolean }> {
+    const res = await this.request<{ success: boolean; token: string; user: User; isNew: boolean }>('/api/auth/google', {
+      method: 'POST',
+      body: JSON.stringify(profile || {})
     });
     if (res.token) {
       this.setToken(res.token);

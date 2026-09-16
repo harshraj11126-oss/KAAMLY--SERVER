@@ -67,6 +67,7 @@ function aistudioMediaPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
+    base: './',
     plugins: [
       react(),
       tailwindcss(),
@@ -82,7 +83,7 @@ export default defineConfig(() => {
           'pwa-maskable-512x512.png',
         ],
         manifest: {
-          id: '/',
+          id: './',
           name: 'KAAMLY - Local Work, Trusted People',
           short_name: 'KAAMLY',
           description: "India's verified marketplace for home repairs and trade services. Backed by standard rate cards, background audits, and a 30-day rework warranty.",
@@ -90,25 +91,25 @@ export default defineConfig(() => {
           background_color: '#0f172a',
           display: 'standalone',
           orientation: 'portrait-primary',
-          start_url: '/',
-          scope: '/',
+          start_url: './',
+          scope: './',
           lang: 'en-IN',
           categories: ['lifestyle', 'utilities', 'productivity', 'business'],
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: 'pwa-192x192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: 'pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: 'pwa-maskable-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
@@ -160,11 +161,20 @@ export default defineConfig(() => {
       },
     },
     server: {
+      // Allow all hostnames (AI Studio preview, custom domains, GitHub codespaces, etc.)
+      allowedHosts: true as true,
+      host: '0.0.0.0',
+      port: 3000,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâ€”file watching is disabled to prevent flickering during agent edits.
+      // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+    preview: {
+      allowedHosts: true as true,
+      host: '0.0.0.0',
+      port: 3000,
     },
   };
 });

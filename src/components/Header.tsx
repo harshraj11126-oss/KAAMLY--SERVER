@@ -327,18 +327,18 @@ export const Header: React.FC<HeaderProps> = ({
                               {currentUser.name}
                             </p>
                             <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full mt-0.5">
-                              {currentUser.role === 'technician' ? 'Technician Pro' : 'Homeowner'}
+                              {currentUser.role === 'worker' ? 'Verified Worker' : 'Customer'}
                             </span>
                           </div>
                         </div>
 
                         <p className="text-xs text-slate-500 truncate mt-1">
-                          {currentUser.email}
+                          {currentUser.email || currentUser.phone}
                         </p>
-                        {currentUser.location && (
+                        {currentUser.city && (
                           <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
                             <MapPin className="w-3 h-3 text-slate-400" />
-                            <span className="truncate">{currentUser.location}</span>
+                            <span className="truncate">{currentUser.locality ? `${currentUser.locality}, ${currentUser.city}` : currentUser.city}</span>
                           </p>
                         )}
                       </div>
@@ -356,7 +356,7 @@ export const Header: React.FC<HeaderProps> = ({
                           <span>Track My Requests ({bookingsCount})</span>
                         </button>
 
-                        {currentUser.role === 'technician' && (
+                        {currentUser.role === 'worker' && (
                           <button
                             type="button"
                             onClick={() => {

@@ -1,4 +1,4 @@
-import { ServerUser, revokeAllUserSessions } from './auth';
+import { ServerUser, revokeAllUserSessions, hashPassword } from './auth';
 import { sanitizeString, sanitizeNumber } from './sanitizer';
 
 export interface WorkerProfileRecord {
@@ -272,6 +272,69 @@ class ServerStore {
       });
     });
 
+    // Seed Registered Customers
+    const seedCustomers: ServerUser[] = [
+      {
+        id: 'u-rahul',
+        phone: '+91 98450 11223',
+        email: 'rahul.sharma@example.com',
+        passwordHash: hashPassword('Kaamly@123'),
+        name: 'Rahul Sharma',
+        role: 'customer',
+        state: 'Karnataka',
+        district: 'Bengaluru Urban',
+        city: 'Bengaluru',
+        locality: 'Indiranagar 100ft Road',
+        language: 'Hindi / English',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+        bio: 'Homeowner in Indiranagar. Frequently looking for reliable local electricians, painters, and plumbers.',
+        isVerified: true,
+        isBlocked: false,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'u-arun',
+        phone: '+91 98451 99887',
+        email: 'arun.nambiar@example.com',
+        passwordHash: hashPassword('Kaamly@123'),
+        name: 'Arun Nambiar',
+        role: 'customer',
+        state: 'Karnataka',
+        district: 'Bengaluru Urban',
+        city: 'Bengaluru',
+        locality: 'Indiranagar 12th Main',
+        language: 'English / Malayalam',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        bio: 'Home resident needing verified electrical and carpentry service.',
+        isVerified: true,
+        isBlocked: false,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: 'u-shreya',
+        phone: '+91 97654 32190',
+        email: 'shreya.kulkarni@example.com',
+        passwordHash: hashPassword('Kaamly@123'),
+        name: 'Shreya Kulkarni',
+        role: 'customer',
+        state: 'Karnataka',
+        district: 'Bengaluru Urban',
+        city: 'Bengaluru',
+        locality: 'Koramangala 4th Block',
+        language: 'Hindi / Kannada',
+        avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+        bio: 'Apartment owner looking for quick plumbing & deep cleaning support.',
+        isVerified: true,
+        isBlocked: false,
+        createdAt: now,
+        updatedAt: now
+      }
+    ];
+
+    seedCustomers.forEach(c => this.users.set(c.id, c));
+
     // Seed Jobs
     const seedJobs: JobRecord[] = [
       {
@@ -323,14 +386,137 @@ class ServerStore {
 
   // --- Users & Profiles ---
   public getUserByPhone(phone: string): ServerUser | undefined {
+    const clean = phone.trim().toLowerCase();
     for (const u of this.users.values()) {
-      if (u.phone === phone) return u;
+      if (u.phone.toLowerCase() === clean || u.phone.replace(/\D/g, '') === clean.replace(/\D/g, '')) {
+        return u;
+      }
     }
     return undefined;
   }
 
+  public getUserByEmail(email: string): ServerUser | undefined {
+    const clean = email.trim().toLowerCase();
+    for (const u of this.users.values()) {
+      if (u.email && u.email.toLowerCase() === clean) {
+        return u;
+      }
+    }
+    return undefined;
+  }
+
+  public getUserByIdentifier(identifier: string): ServerUser | undefined {
+    const clean = identifier.trim();
+    if (clean.includes('@')) {
+      return this.getUserByEmail(clean);
+    }
+    return this.getUserByPhone(clean);
+  }
+
   public getUserById(id: string): ServerUser | undefined {
     return this.users.get(id);
+  }
+
+  public registerUserWithPassword(data: {
+    name: string;
+    phone?: string;
+    email?: string;
+    passwordHash: string;
+    role: 'customer' | 'worker';
+    state?: string;
+    district?: string;
+    city?: string;
+    locality?: string;
+    language?: string;
+  }): ServerUser {
+    const now = new Date().toISOString();
+    const newUser: ServerUser = {
+      id: `usr-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      phone: data.phone || '+91 99999 00000',
+      email: data.email,
+      passwordHash: data.passwordHash,
+      name: data.name.trim(),
+      role: data.role,
+      state: data.state || 'Karnataka',
+      district: data.district || 'Bengaluru Urban',
+      city: data.city || 'Bengaluru',
+      locality: data.locality || 'Indiranagar',
+      language: data.language || 'Hindi / English',
+      avatar: '',
+      bio: '',
+      isVerified: true,
+      isBlocked: false,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    this.users.set(newUser.id, newUser);
+    return newUser;
+  }
+
+  public getQuickLoginAccounts(): Array<{
+    id: string;
+    name: string;
+    role: 'customer' | 'worker';
+    phone: string;
+    email?: string;
+    title: string;
+    avatar?: string;
+    rating?: number;
+    category?: string;
+    locality?: string;
+    city?: string;
+  }> {
+    return [
+      {
+        id: 'u-rahul',
+        name: 'Rahul Sharma',
+        role: 'customer',
+        phone: '+91 98450 11223',
+        email: 'rahul.sharma@example.com',
+        title: 'Homeowner / Customer',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+        locality: 'Indiranagar',
+        city: 'Bengaluru'
+      },
+      {
+        id: 'u-rajesh',
+        name: 'Rajesh Sharma',
+        role: 'worker',
+        phone: '+91 98765 43210',
+        email: 'rajesh.electrician@example.com',
+        title: 'Licensed Electrician',
+        category: 'Electrician',
+        rating: 4.9,
+        avatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=150&auto=format&fit=crop&q=80',
+        locality: 'Indiranagar',
+        city: 'Bengaluru'
+      },
+      {
+        id: 'u-manoj',
+        name: 'Manoj Paswan',
+        role: 'worker',
+        phone: '+91 98112 34567',
+        email: 'manoj.plumber@example.com',
+        title: 'Expert Plumber & Pipe Fitter',
+        category: 'Plumber',
+        rating: 4.8,
+        avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+        locality: 'HSR Layout',
+        city: 'Bengaluru'
+      },
+      {
+        id: 'u-shreya',
+        name: 'Shreya Kulkarni',
+        role: 'customer',
+        phone: '+91 97654 32190',
+        email: 'shreya.kulkarni@example.com',
+        title: 'Apartment Owner',
+        avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+        locality: 'Koramangala',
+        city: 'Bengaluru'
+      }
+    ];
   }
 
   public getOrCreateUser(phone: string, defaultRole: 'customer' | 'worker' = 'customer'): { user: ServerUser; isNew: boolean } {

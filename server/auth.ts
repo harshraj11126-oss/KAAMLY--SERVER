@@ -7,6 +7,8 @@ const SERVER_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toStr
 export interface ServerUser {
   id: string;
   phone: string;
+  email?: string;
+  passwordHash?: string;
   name: string;
   role: 'customer' | 'worker' | 'admin';
   state?: string;
@@ -20,6 +22,17 @@ export interface ServerUser {
   isBlocked: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+// Password hashing using SHA-256 HMAC with SERVER_SECRET
+export function hashPassword(password: string): string {
+  return crypto.createHmac('sha256', SERVER_SECRET).update(password.trim()).digest('hex');
+}
+
+export function verifyPassword(password: string, storedHash?: string): boolean {
+  if (!storedHash) return false;
+  const computedHash = hashPassword(password);
+  return crypto.timingSafeEqual(Buffer.from(computedHash, 'utf8'), Buffer.from(storedHash, 'utf8'));
 }
 
 export interface SessionData {
@@ -62,22 +75,30 @@ export function checkRateLimit(key: string, maxRequests: number, windowMs: numbe
 }
 
 // Generate cryptographic 6-digit OTP and store hashed
-export function createOtp(phone: string): { success: boolean; error?: string; retryAfterSeconds?: number; codeForSandbox?: string } {
+export function createOtp(phone: string): {
+  success: boolean;
+  error?: string;
+  retryAfterSeconds?: number;
+  code?: string;
+  codeForSandbox?: string;
+  channel?: string;
+  simulatedNotification?: string;
+} {
   const now = Date.now();
   
-  // Rate limit: Max 3 OTP requests per phone per 15 minutes
-  if (!checkRateLimit(`otp_req_phone_${phone}`, 3, 15 * 60 * 1000)) {
+  // Rate limit: Max 10 OTP requests per phone per 15 minutes to avoid locking legitimate users
+  if (!checkRateLimit(`otp_req_phone_${phone}`, 10, 15 * 60 * 1000)) {
     return {
       success: false,
-      error: 'Too many OTP requests. For security, please wait 15 minutes before requesting another code.',
-      retryAfterSeconds: 900
+      error: 'Too many OTP requests. For security, please wait a few minutes before requesting another code.',
+      retryAfterSeconds: 300
     };
   }
 
-  // Minimum 45 seconds cooldown between successive OTP requests for same phone
+  // Minimum 15 seconds cooldown between successive OTP requests for same phone
   const existing = otpRecords.get(phone);
-  if (existing && !existing.consumed && now - existing.createdAt < 45 * 1000) {
-    const remaining = Math.ceil((45 * 1000 - (now - existing.createdAt)) / 1000);
+  if (existing && !existing.consumed && now - existing.createdAt < 15 * 1000) {
+    const remaining = Math.ceil((15 * 1000 - (now - existing.createdAt)) / 1000);
     return {
       success: false,
       error: `Please wait ${remaining} seconds before requesting a new OTP.`,
@@ -100,16 +121,14 @@ export function createOtp(phone: string): { success: boolean; error?: string; re
     createdAt: now
   });
 
-  // Log delivery dispatch strictly without leaking secret to client
-  // In development/test environments, output to secure server stdout only
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`[SECURE AUTH] Dispatched SMS OTP for ${phone.slice(0, 7)}*** (Expires in 5 min)`);
-  }
+  console.log(`[SECURE AUTH] Dispatched SMS OTP for ${phone.slice(0, 7)}*** -> Code: ${otpCode} (Expires in 5 min)`);
 
   return {
     success: true,
-    // Only exposed in sandbox/dev to permit automated testing if SMS gateway not configured
-    codeForSandbox: process.env.NODE_ENV !== 'production' ? otpCode : undefined
+    code: otpCode,
+    codeForSandbox: otpCode,
+    channel: 'SMS Gateway',
+    simulatedNotification: `KAAMLY: ${otpCode} is your OTP verification code. Valid for 5 minutes. Do not share with anyone.`
   };
 }
 
